@@ -45,6 +45,16 @@ step() { printf '\n\033[1;34m==> %s\033[0m\n' "$*"; }
 
 gcloud config set project "$PROJECT" >/dev/null
 PROJECT_NUMBER="$(gcloud projects describe "$PROJECT" --format='value(projectNumber)')"
+
+# Cloud Run, Cloud Build, Artifact Registry and Secret Manager all require billing on the project.
+BILLING="$(gcloud billing projects describe "$PROJECT" --format='value(billingEnabled)' 2>/dev/null || true)"
+if [[ "${BILLING,,}" == "false" ]]; then
+  echo "ERROR: billing is not enabled on project ${PROJECT}. Link a billing account, then re-run:"
+  echo "  gcloud billing accounts list"
+  echo "  gcloud billing projects link ${PROJECT} --billing-account=BILLING_ACCOUNT_ID"
+  echo "(or Console -> Billing -> Link a billing account: https://console.cloud.google.com/billing/linkedaccount?project=${PROJECT})"
+  exit 1
+fi
 COMPUTE_SA="${PROJECT_NUMBER}-compute@developer.gserviceaccount.com"
 
 if [[ "$MODE" == gcp ]] && grep -q "name: acme-" config/settings.yaml; then
