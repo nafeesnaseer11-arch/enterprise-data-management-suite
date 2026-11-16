@@ -1,0 +1,23 @@
+# Business glossary - indexed into Meta RAG so the chatbot understands business language
+terms:
+  - term: Lifetime Value (LTV)
+    definition: Total value of all non-cancelled orders placed by a customer (quantity x unit price). Also called customer value, total spend or revenue per customer.
+    tables: [gold.customer_360]
+  - term: Revenue
+    definition: Sum of quantity x unit price for orders that are not cancelled. Sales, turnover and income are used as synonyms. Reported monthly by region and product category.
+    tables: [gold.revenue_by_month, gold.product_performance]
+  - term: Headcount
+    definition: Number of employees in a department, from the HR system (RDS). Includes average salary and average tenure in years.
+    tables: [gold.headcount_by_department]
+  - term: Resolution Time
+    definition: Hours between a support ticket being created and resolved. Open tickets have no resolution time.
+    tables: [gold.support_kpis]
+  - term: Collected Revenue / Invoices
+    definition: Invoiced amounts by month and payment method, with how much has been paid (collected) and the share outstanding.
+    tables: [gold.invoice_summary]
+  - term: Customer Segment
+    definition: Commercial segment of a customer - Enterprise, Mid-Market or SMB.
+    tables: [gold.customer_360]
+  - term: Medallion Architecture
+    definition: Bronze holds raw data exactly as migrated from AWS, Silver holds cleaned, typed and de-duplicated data, Gold holds business-level aggregates ready for analytics and the chatbot.
+    tables: []

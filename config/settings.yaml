@@ -1,0 +1,74 @@
+# Enterprise Data Management Suite (EDMS) configuration
+#
+# mode: local -> runs fully offline. AWS S3/RDS are simulated by folders + SQLite,
+#               GCS by a local landing folder, BigQuery by DuckDB, the vector DB
+#               by a local NumPy store. Same code paths, same SQL.
+# mode: gcp   -> reads from real AWS (boto3 / SQLAlchemy), lands raw files in GCS,
+#               builds Bronze/Silver/Gold in BigQuery and stores embeddings in
+#               BigQuery (VECTOR_SEARCH) using Vertex AI embeddings.
+# Override with env var EDMS_MODE=gcp
+mode: local
+suite_name: Enterprise Data Management Suite
+
+local:
+  aws_s3_root: data/aws_s3            # each sub-folder = one S3 bucket
+  aws_rds_root: data/aws_rds          # SQLite files standing in for RDS databases
+  gcs_landing_root: data/gcs_landing  # stands in for gs://<landing_bucket>
+  warehouse_path: data/warehouse.duckdb
+  vector_store_path: data/vector_store
+
+gcp:
+  project_id: your-gcp-project-id
+  location: US                         # BigQuery location
+  landing_bucket: your-gcp-project-id-edms-landing
+  vertex_region: us-central1
+  embedding_model: text-embedding-005
+
+# The AWS estate to migrate. Every prefix ("folder") inside a bucket and every
+# table inside an RDS database is discovered automatically and migrated.
+aws:
+  region: us-east-1
+  s3_buckets:
+    - name: acme-sales-prod
+      domain: sales
+      owner: sales-data@acme.example
+    - name: acme-support-prod
+      domain: support
+      owner: cx-data@acme.example
+    - name: acme-finance-prod
+      domain: finance
+      owner: finance-data@acme.example
+  rds_databases:
+    - name: acme-hr-db
+      # local mode: sqlite file under aws_rds_root. gcp mode: any SQLAlchemy URL,
+      # e.g. postgresql+psycopg2://user:pass@acme-hr.xxxx.us-east-1.rds.amazonaws.com/hr
+      url: sqlite:///data/aws_rds/acme_hr.db
+      domain: hr
+      owner: hr-data@acme.example
+
+# Physical dataset names for each medallion layer (BigQuery datasets / DuckDB schemas)
+datasets:
+  bronze: edms_bronze
+  silver: edms_silver
+  gold: edms_gold
+  governance: edms_governance
+
+etl:
+  profile_sample_rows: 5000     # rows sampled per table for type / PII / key inference
+  type_inference_threshold: 0.95
+  gold_models: config/gold_models.yaml
+
+rag:
+  embedder: hashing             # hashing (offline) | vertex
+  dim: 768
+  top_k: 8
+  max_rows_per_table: 300       # data rows indexed per table (metadata is always indexed)
+  glossary: config/glossary.yaml
+  llm:
+    provider: anthropic         # anthropic | offline
+    model: claude-opus-5-5
+    effort: medium
+    max_tool_iterations: 6
+
+governance:
+  policies: config/policies.yaml

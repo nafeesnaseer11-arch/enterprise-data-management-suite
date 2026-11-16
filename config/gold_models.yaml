@@ -1,0 +1,103 @@
+# Gold (business) models. SQL is dialect-neutral: {{ ref(layer, table) }} resolves to the
+# physical table and macros ({{ month(x) }}, {{ hours_between(a, b) }}, {{ years_since(d) }})
+# compile to BigQuery or DuckDB SQL.
+models:
+  - name: customer_360
+    domain: sales
+    owner: sales-data@acme.example
+    description: One row per customer with profile, order totals, lifetime value and support activity.
+    sql: |
+      WITH o AS (
+        SELECT customer_id,
+               COUNT(*) AS total_orders,
+               SUM(quantity * unit_price) AS lifetime_value,
+               MAX(order_date) AS last_order_date
+        FROM {{ ref(silver, orders) }}
+        WHERE LOWER(status) <> 'cancelled'
+        GROUP BY customer_id
+      ), t AS (
+        SELECT customer_id,
+               COUNT(*) AS total_tickets,
+               SUM(CASE WHEN LOWER(status) IN ('open', 'in_progress') THEN 1 ELSE 0 END) AS open_tickets
+        FROM {{ ref(silver, support_tickets) }}
+        GROUP BY customer_id
+      )
+      SELECT c.customer_id, c.first_name, c.last_name, c.email_address, c.country, c.segment,
+             c.signup_date,
+             COALESCE(o.total_orders, 0) AS total_orders,
+             ROUND(COALESCE(o.lifetime_value, 0), 2) AS lifetime_value,
+             o.last_order_date,
+             COALESCE(t.total_tickets, 0) AS total_tickets,
+             COALESCE(t.open_tickets, 0) AS open_tickets
+      FROM {{ ref(silver, customers) }} c
+      LEFT JOIN o ON o.customer_id = c.customer_id
+      LEFT JOIN t ON t.customer_id = c.customer_id
+
+  - name: revenue_by_month
+    domain: sales
+    owner: sales-data@acme.example
+    description: Monthly revenue, orders and units by sales region and product category.
+    sql: |
+      SELECT {{ month(o.order_date) }} AS order_month,
+             o.region,
+             COALESCE(p.category, 'Unknown') AS category,
+             COUNT(DISTINCT o.order_id) AS orders,
+             SUM(o.quantity) AS units,
+             ROUND(SUM(o.quantity * o.unit_price), 2) AS revenue
+      FROM {{ ref(silver, orders) }} o
+      LEFT JOIN {{ ref(silver, products) }} p ON p.product_id = o.product_id
+      WHERE LOWER(o.status) <> 'cancelled' AND o.order_date IS NOT NULL
+      GROUP BY 1, 2, 3
+
+  - name: product_performance
+    domain: sales
+    owner: sales-data@acme.example
+    description: Units sold, revenue and number of buying customers per product.
+    sql: |
+      SELECT p.product_id, p.product_name, p.category, p.list_price,
+             COUNT(DISTINCT o.customer_id) AS buying_customers,
+             COALESCE(SUM(o.quantity), 0) AS units_sold,
+             ROUND(COALESCE(SUM(o.quantity * o.unit_price), 0), 2) AS revenue
+      FROM {{ ref(silver, products) }} p
+      LEFT JOIN {{ ref(silver, orders) }} o
+        ON o.product_id = p.product_id AND LOWER(o.status) <> 'cancelled'
+      GROUP BY p.product_id, p.product_name, p.category, p.list_price
+
+  - name: headcount_by_department
+    domain: hr
+    owner: hr-data@acme.example
+    description: Headcount, average salary and average tenure (years) per department.
+    sql: |
+      SELECT d.department_name, d.cost_center,
+             COUNT(e.employee_id) AS headcount,
+             ROUND(AVG(e.salary), 0) AS avg_salary,
+             ROUND(AVG({{ years_since(e.hire_date) }}), 1) AS avg_tenure_years
+      FROM {{ ref(silver, departments) }} d
+      LEFT JOIN {{ ref(silver, employees) }} e ON e.department_id = d.department_id
+      GROUP BY d.department_name, d.cost_center
+
+  - name: support_kpis
+    domain: support
+    owner: cx-data@acme.example
+    description: Support ticket volume, open backlog and average resolution hours by category and priority.
+    sql: |
+      SELECT category, priority,
+             COUNT(*) AS tickets,
+             SUM(CASE WHEN LOWER(status) IN ('open', 'in_progress') THEN 1 ELSE 0 END) AS open_tickets,
+             ROUND(AVG({{ hours_between(created_at, resolved_at) }}), 1) AS avg_resolution_hours
+      FROM {{ ref(silver, support_tickets) }}
+      GROUP BY category, priority
+
+  - name: invoice_summary
+    domain: finance
+    owner: finance-data@acme.example
+    description: Invoiced and collected amounts by month and payment method.
+    sql: |
+      SELECT {{ month(issued_date) }} AS invoice_month,
+             payment_method,
+             COUNT(*) AS invoices,
+             ROUND(SUM(amount), 2) AS invoiced_amount,
+             ROUND(SUM(CASE WHEN paid THEN amount ELSE 0 END), 2) AS collected_amount,
+             ROUND(1 - SUM(CASE WHEN paid THEN amount ELSE 0 END) / NULLIF(SUM(amount), 0), 3) AS outstanding_ratio
+      FROM {{ ref(silver, invoices) }}
+      GROUP BY 1, 2

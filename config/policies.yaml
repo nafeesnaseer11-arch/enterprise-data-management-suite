@@ -1,0 +1,49 @@
+# Data governance policies
+classification_levels: [PUBLIC, INTERNAL, CONFIDENTIAL, RESTRICTED]
+
+# How each sensitive classification is protected when the viewer is not cleared for it
+masking:
+  CONFIDENTIAL: tokenize   # deterministic SHA-256 token -> still joinable, not readable
+  RESTRICTED: redact       # fully redacted
+
+# Role-based access. layers = medallion layers the role may query.
+# domains = business domains the role may see ("*" = all).
+# max_classification = highest classification shown in clear text.
+roles:
+  data_admin:
+    description: Platform owners. Full access, sees all data in clear.
+    layers: [bronze, silver, gold, governance]
+    domains: ["*"]
+    max_classification: RESTRICTED
+    principal: group:edms-admins@acme.example
+  data_engineer:
+    description: Builds pipelines. All layers, but personal data is masked.
+    layers: [bronze, silver, gold, governance]
+    domains: ["*"]
+    max_classification: INTERNAL
+    principal: group:edms-engineers@acme.example
+  business_analyst:
+    description: Self-service analytics on curated Gold data for commercial domains.
+    layers: [gold]
+    domains: [sales, support, finance]
+    max_classification: INTERNAL
+    principal: group:analysts@acme.example
+  hr_partner:
+    description: HR business partners. HR domain only; sees names and salary, not government IDs.
+    layers: [silver, gold]
+    domains: [hr]
+    max_classification: CONFIDENTIAL
+    principal: group:hr-partners@acme.example
+  executive:
+    description: Leadership dashboards. Gold layer across all domains, aggregated data.
+    layers: [gold]
+    domains: ["*"]
+    max_classification: INTERNAL
+    principal: group:leadership@acme.example
+
+# Retention per layer (days). Applied as BigQuery table expiration / partition expiry in gcp mode.
+retention_days:
+  bronze: 90
+  silver: 730
+  gold: 1825
+  governance: 2555
