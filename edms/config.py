@@ -24,8 +24,17 @@ def load_yaml(path: str | Path) -> dict:
 def load_settings(path: str | Path | None = None) -> dict:
     cfg = load_yaml(path or os.getenv("EDMS_CONFIG", "config/settings.yaml"))
     cfg["mode"] = os.getenv("EDMS_MODE", cfg.get("mode", "local")).lower()
-    if os.getenv("EDMS_GCP_PROJECT"):
-        cfg["gcp"]["project_id"] = os.environ["EDMS_GCP_PROJECT"]
+    # environment overrides used by the Cloud Run deployment (see deploy/deploy.sh)
+    overrides = {
+        "EDMS_GCP_PROJECT": ("gcp", "project_id"),
+        "EDMS_BQ_LOCATION": ("gcp", "location"),
+        "EDMS_LANDING_BUCKET": ("gcp", "landing_bucket"),
+        "EDMS_VERTEX_REGION": ("gcp", "vertex_region"),
+        "EDMS_EMBEDDER": ("rag", "embedder"),
+    }
+    for env, (section, key) in overrides.items():
+        if os.getenv(env):
+            cfg[section][key] = os.environ[env]
     if os.getenv("EDMS_LLM_PROVIDER"):
         cfg["rag"]["llm"]["provider"] = os.environ["EDMS_LLM_PROVIDER"]
     cfg["policies"] = load_yaml(cfg["governance"]["policies"])

@@ -231,10 +231,9 @@ class BigQueryWarehouse(Warehouse):
         self.client.query(sql).result()
 
     def write_df(self, layer: str, table: str, df: pd.DataFrame, mode: str = "replace") -> None:
-        cfg = self.bq.LoadJobConfig(
-            write_disposition="WRITE_APPEND" if mode == "append" else "WRITE_TRUNCATE",
-            schema_update_options=["ALLOW_FIELD_ADDITION"] if mode == "append" else None,
-        )
+        cfg = self.bq.LoadJobConfig(write_disposition="WRITE_APPEND" if mode == "append" else "WRITE_TRUNCATE")
+        if mode == "append":
+            cfg.schema_update_options = ["ALLOW_FIELD_ADDITION"]
         ref = f"{self.project}.{self.datasets.get(layer, layer)}.{table}"
         self.client.load_table_from_dataframe(df, ref, job_config=cfg).result()
 

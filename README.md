@@ -117,26 +117,37 @@ In `local` mode, local stand-ins replace each cloud service. The SQL and the cod
 
 The **Acting as role** selector in the sidebar applies the policies everywhere. For example, switch to `business_analyst` and ask for top customers: names and emails come back tokenised. Ask the same as `hr_partner` and you'll be denied, because the role is limited to the HR domain.
 
-## Running on GCP
-1. Provision the infrastructure: `cd infra/terraform && terraform apply -var project_id=<id> ...`. This creates the landing bucket, the 4 BigQuery datasets with retention, a least-privilege service account, nightly Storage Transfer Service jobs for each S3 bucket, and a Secret Manager slot for the Anthropic key.
-2. Edit `config/settings.yaml`:
-   * `gcp.project_id` and `gcp.landing_bucket`
-   * the real bucket names and RDS SQLAlchemy URLs under `aws`
-   * `rag.embedder: vertex`
-3. Install the extra packages:
+## Deploying to GCP (Cloud Run)
 
-   ```bash
-   pip install -r requirements-gcp.txt
-   ```
+Run `deploy/deploy.sh` from the repository root in **Cloud Shell**, which is already signed in to your Google account. It enables the APIs, creates a least-privilege service account and builds one image with Cloud Build. It then deploys the UI as a Cloud Run service. API keys are typed at a hidden prompt and stored in Secret Manager, never in files.
 
-4. Run with `EDMS_MODE=gcp` and AWS credentials in the environment:
+**Demo**: the UI with the built-in sample company. It bootstraps itself on start and resets when the instance restarts.
 
-   ```bash
-   EDMS_MODE=gcp python -m scripts.run_pipeline
-   ```
+```bash
+git clone https://github.com/nafeesnaseer11-arch/enterprise-data-management-suite && cd enterprise-data-management-suite
+```
 
-   Or deploy the UI to Cloud Run with the included `Dockerfile`.
-5. Apply the native policies by running the BigQuery governance script from the Governance page with `bq query`, and create the policy-tag taxonomy it lists.
+```bash
+./deploy/deploy.sh --project YOUR_PROJECT_ID
+```
+
+**Production**: real AWS data goes to the GCS landing bucket and BigQuery Bronze/Silver/Gold, with Vertex AI embeddings and BigQuery `VECTOR_SEARCH`. A nightly Cloud Run job runs the pipeline. First edit `aws.s3_buckets` / `aws.rds_databases` in `config/settings.yaml`, then:
+
+```bash
+./deploy/deploy.sh --project YOUR_PROJECT_ID --mode gcp
+```
+
+```bash
+gcloud run jobs execute edms-pipeline --region us-central1 --wait
+```
+
+The UI is private by default. Open it through an authenticated proxy (then use Cloud Shell **Web Preview** on port 8080), or redeploy with `--public` if your organisation allows unauthenticated services:
+
+```bash
+gcloud run services proxy edms --region us-central1 --port 8080
+```
+
+`infra/terraform` is an alternative if you'd rather manage the foundation as code (datasets with retention, landing bucket, Storage Transfer Service jobs for bulk S3 copies, Secret Manager). To enforce the policies natively, run the BigQuery governance script from the Governance page with `bq query`.
 
 ## Notes and next steps
 * Bronze does full-snapshot loads. For very large tables, add incremental watermarks (for example on `updated_at` or S3 `LastModified`).

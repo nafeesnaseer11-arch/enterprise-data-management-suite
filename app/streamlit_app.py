@@ -4,6 +4,7 @@
 """
 from __future__ import annotations
 
+import os
 import sys
 from pathlib import Path
 
@@ -43,7 +44,11 @@ CLASS_COLORS = {"PUBLIC": "#16A34A", "INTERNAL": "#2563EB", "CONFIDENTIAL": "#D9
 
 @st.cache_resource(show_spinner="Starting the suite…")
 def get_suite() -> Suite:
-    return Suite()
+    s = Suite()
+    # Cloud Run demo: the container starts empty, so build the sample estate once per instance
+    if os.getenv("EDMS_AUTO_BOOTSTRAP") == "1" and s.cfg["mode"] == "local" and s.status()["gold_tables"] == 0:
+        s.run_end_to_end(on_event=lambda **e: print(f"[bootstrap:{e['stage']}] {e['message']}"), actor="system")
+    return s
 
 
 suite = get_suite()

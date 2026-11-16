@@ -55,23 +55,27 @@ class HashingEmbedder:
 
 
 class VertexEmbedder:
+    """Vertex AI text embeddings through the google-genai SDK (uses the runtime's ADC)."""
     name = "vertex"
 
-    def __init__(self, project: str, region: str, model: str = "text-embedding-005"):
-        import vertexai
-        from vertexai.language_models import TextEmbeddingInput, TextEmbeddingModel
+    def __init__(self, project: str, region: str, model: str = "text-embedding-005", dim: int = 768):
+        from google import genai
+        from google.genai import types
 
-        vertexai.init(project=project, location=region)
-        self._input = TextEmbeddingInput
-        self.model = TextEmbeddingModel.from_pretrained(model)
-        self.dim = 768
+        self._types = types
+        self.client = genai.Client(vertexai=True, project=project, location=region)
+        self.model = model
+        self.dim = dim
 
     def embed(self, texts: list[str], task: str = "RETRIEVAL_DOCUMENT") -> np.ndarray:
+        cfg = self._types.EmbedContentConfig(task_type=task, output_dimensionality=self.dim, auto_truncate=True)
         vecs = []
-        for i in range(0, len(texts), 100):
-            batch = [self._input(t[:8000], task) for t in texts[i:i + 100]]
-            vecs += [e.values for e in self.model.get_embeddings(batch)]
-        return np.asarray(vecs, dtype=np.float32)
+        for i in range(0, len(texts), 100):  # stay under the per-request instance limit
+            resp = self.client.models.embed_content(model=self.model, contents=texts[i:i + 100], config=cfg)
+            vecs += [e.values for e in resp.embeddings]
+        arr = np.asarray(vecs, dtype=np.float32)
+        norms = np.linalg.norm(arr, axis=1, keepdims=True)
+        return arr / np.where(norms == 0, 1, norms)
 
 
 class LocalVectorStore:
@@ -166,7 +170,7 @@ class BigQueryVectorStore:
 def make_embedder(cfg: dict):
     r = cfg["rag"]
     if r["embedder"] == "vertex":
-        return VertexEmbedder(cfg["gcp"]["project_id"], cfg["gcp"]["vertex_region"], cfg["gcp"]["embedding_model"])
+        return VertexEmbedder(cfg["gcp"]["project_id"], cfg["gcp"]["vertex_region"], cfg["gcp"]["embedding_model"], r["dim"])
     return HashingEmbedder(r["dim"])
 
 

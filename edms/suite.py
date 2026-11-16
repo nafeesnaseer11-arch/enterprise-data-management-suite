@@ -46,7 +46,7 @@ class Suite:
     def generate_sample_data(self):
         if self.cfg["mode"] != "local":
             raise RuntimeError("Sample data is only generated in local mode")
-        from scripts.generate_sample_data import generate
+        from edms.sample_data import generate
         generate(resolve(self.cfg["local"]["aws_s3_root"]), resolve(self.cfg["local"]["aws_rds_root"]))
 
     def run_end_to_end(self, on_event: Callable | None = None, actor: str = "data_admin"):
